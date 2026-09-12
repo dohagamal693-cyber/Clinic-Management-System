@@ -1,0 +1,640 @@
+#include <iostream>
+#include <string>
+#include <fstream>
+#include <sstream>
+
+using namespace std;
+
+class Person {
+protected:
+    int id;
+    string name;
+
+public:
+    Person(int id = 0, string name = "") : id(id), name(name) {}
+    virtual ~Person() {}
+
+    int getId() const { return id; }
+    string getName() const { return name; }
+
+    void setId(int i) { id = i; }
+    void setName(const string& n) { name = n; }
+
+    virtual void displayInfo() const = 0;
+};
+
+class Visit {
+protected:
+    string date;
+    string doctorName;
+    string diagnosis;
+
+public:
+    Visit(string date, string doctorName, string diagnosis)
+        : date(date), doctorName(doctorName), diagnosis(diagnosis) {}
+    virtual ~Visit() {}
+
+    string getDate() const { return date; }
+    string getDoctorName() const { return doctorName; }
+    string getDiagnosis() const { return diagnosis; }
+
+    virtual double calculateFee() const = 0;
+    virtual string getType() const = 0;
+};
+
+class EmergencyVisit : public Visit {
+private:
+    int severityLevel;
+
+public:
+    EmergencyVisit(string date, string doctorName, string diagnosis, int severity = 1)
+        : Visit(date, doctorName, diagnosis), severityLevel(severity) {}
+
+    double calculateFee() const override {
+        return 400.0 + (severityLevel * 20.0);
+    }
+
+    string getType() const override { return "EMERGENCY"; }
+    int getSeverity() const { return severityLevel; }
+};
+
+class NormalVisit : public Visit {
+public:
+    NormalVisit(string date, string doctorName, string diagnosis)
+        : Visit(date, doctorName, diagnosis) {}
+
+    double calculateFee() const override {
+        return 200.0;
+    }
+
+    string getType() const override { return "NORMAL"; }
+};
+
+struct VisitNode {
+    Visit* visit;
+    VisitNode* next;
+    VisitNode(Visit* v) : visit(v), next(nullptr) {}
+    ~VisitNode() { delete visit; }
+};
+
+class VisitHistory {
+private:
+    VisitNode* head;
+
+    double calculateTotalPaidRecursive(VisitNode* current) const {
+        if (current == nullptr) return 0.0;
+        return current->visit->calculateFee() + calculateTotalPaidRecursive(current->next);
+    }
+
+public:
+    VisitHistory() : head(nullptr) {}
+    ~VisitHistory() {
+        VisitNode* current = head;
+        while (current != nullptr) {
+            VisitNode* nextNode = current->next;
+            delete current;
+            current = nextNode;
+        }
+    }
+
+    void addVisit(Visit* v) {
+        VisitNode* newNode = new VisitNode(v);
+        if (!head) {
+            head = newNode;
+        } else {
+            VisitNode* temp = head;
+            while (temp->next) {
+                temp = temp->next;
+            }
+            temp->next = newNode;
+        }
+    }
+
+    void printHistory() const {
+        VisitNode* temp = head;
+        if (!temp) {
+            cout << "No visit history found.\n";
+            return;
+        }
+        while (temp != nullptr) {
+            cout << temp->visit->getDate() << " | Dr. " << temp->visit->getDoctorName()
+                 << " | " << temp->visit->getDiagnosis() << " | "
+                 << temp->visit->calculateFee() << " EGP\n";
+            temp = temp->next;
+        }
+    }
+
+    double getTotalPaid() const {
+        return calculateTotalPaidRecursive(head);
+    }
+
+    int getVisitCount() const {
+        int count = 0;
+        VisitNode* temp = head;
+        while (temp) {
+            count++;
+            temp = temp->next;
+        }
+        return count;
+    }
+
+    VisitNode* getHead() const { return head; }
+};
+
+class Patient : public Person {
+private:
+    int age;
+    string phone;
+    VisitHistory history;
+
+public:
+    Patient(int id = 0, string name = "", int age = 0, string phone = "")
+        : Person(id, name), age(age), phone(phone) {}
+
+    int getAge() const { return age; }
+    string getPhone() const { return phone; }
+    VisitHistory& getHistory() { return history; }
+    const VisitHistory& getHistory() const { return history; }
+
+    void setAge(int a) { age = a; }
+    void setPhone(const string& p) { phone = p; }
+
+    void displayInfo() const override {
+        cout << id << "\t" << name << "\t" << age << "\t" << phone << "\n";
+    }
+
+    friend ostream& operator<<(ostream& os, const Patient& p) {
+        os << p.id << " | " << p.name << " | " << p.age << " | " << p.phone;
+        return os;
+    }
+};
+
+class Doctor : public Person {
+private:
+    string specialization;
+    double consultationFee;
+
+public:
+    Doctor(int id = 0, string name = "", string specialization = "", double fee = 0.0)
+        : Person(id, name), specialization(specialization), consultationFee(fee) {}
+
+    string getSpecialization() const { return specialization; }
+    double getFee() const { return consultationFee; }
+
+    void displayInfo() const override {
+        cout << id << "\tDr. " << name << "\t" << specialization << "\t" << consultationFee << " EGP\n";
+    }
+};
+
+enum CaseType { NORMAL = 2, EMERGENCY = 1 };
+
+struct PatientInQueue {
+    Patient* patient;
+    CaseType caseType;
+    int severityLevel;
+    string timeArrived;
+    int orderNumber;
+};
+
+class WaitingRoom {
+private:
+    PatientInQueue queue[100];
+    int count;
+    int globalOrder;
+
+public:
+    WaitingRoom() : count(0), globalOrder(0) {}
+
+    void addPatient(Patient* p, CaseType type, string time, int severity = 1) {
+        if (count >= 100) {
+            cout << "[X] Waiting room is full!\n";
+            return;
+        }
+        queue[count].patient = p;
+        queue[count].caseType = type;
+        queue[count].severityLevel = (type == EMERGENCY) ? severity : 0;
+        queue[count].timeArrived = time;
+        queue[count].orderNumber = globalOrder++;
+        count++;
+
+        string typeStr = (type == EMERGENCY) ? "EMERGENCY (Severity " + to_string(severity) + ")" : "NORMAL";
+        cout << "[OK] " << p->getName() << " added as " << typeStr << " at " << time << ".\n";
+    }
+
+    void viewWaiting() const {
+        if (count == 0) {
+            cout << "[X] No patients waiting.\n";
+            return;
+        }
+
+        PatientInQueue tempQueue[100];
+        for (int i = 0; i < count; i++) tempQueue[i] = queue[i];
+
+        for (int i = 0; i < count - 1; i++) {
+            for (int j = i + 1; j < count; j++) {
+                if (tempQueue[j].caseType < tempQueue[i].caseType ||
+                   (tempQueue[j].caseType == tempQueue[i].caseType && tempQueue[j].severityLevel > tempQueue[i].severityLevel) ||
+                   (tempQueue[j].caseType == tempQueue[i].caseType && tempQueue[j].severityLevel == tempQueue[i].severityLevel && tempQueue[j].orderNumber < tempQueue[i].orderNumber)) {
+                    swap(tempQueue[i], tempQueue[j]);
+                }
+            }
+        }
+
+        cout << "#\tPATIENT\t\tCASE\t\tSEVERITY\tARRIVED\n";
+        for (int i = 0; i < count; i++) {
+            string typeStr = (tempQueue[i].caseType == EMERGENCY) ? "EMERGENCY" : "NORMAL";
+            cout << (i + 1) << "\t" << tempQueue[i].patient->getName()
+                 << "\t\t" << typeStr << "\t" << tempQueue[i].severityLevel << "\t\t" << tempQueue[i].timeArrived << "\n";
+        }
+    }
+
+    PatientInQueue callNext() {
+        if (count == 0) {
+            return {nullptr, NORMAL, 0, "", -1};
+        }
+
+        int bestIdx = 0;
+        for (int i = 1; i < count; i++) {
+            if (queue[i].caseType < queue[bestIdx].caseType ||
+               (queue[i].caseType == queue[bestIdx].caseType && queue[i].severityLevel > queue[bestIdx].severityLevel) ||
+               (queue[i].caseType == queue[bestIdx].caseType && queue[i].severityLevel == queue[bestIdx].severityLevel && queue[i].orderNumber < queue[bestIdx].orderNumber)) {
+                bestIdx = i;
+            }
+        }
+
+        PatientInQueue nextPatient = queue[bestIdx];
+
+        for (int i = bestIdx; i < count - 1; i++) {
+            queue[i] = queue[i + 1];
+        }
+        count--;
+
+        return nextPatient;
+    }
+
+    int getWaitingCount() const { return count; }
+};
+
+class DatabaseManager {
+public:
+    static void saveData(Patient patients[], int pCount, Doctor doctors[], int dCount) {
+        ofstream outFile("clinic_data.txt");
+        if (!outFile) return;
+
+        outFile << pCount << "\n";
+        for (int i = 0; i < pCount; i++) {
+            outFile << patients[i].getId() << "," << patients[i].getName() << ","
+                    << patients[i].getAge() << "," << patients[i].getPhone() << "\n";
+            
+            int vCount = patients[i].getHistory().getVisitCount();
+            outFile << vCount << "\n";
+            VisitNode* curr = patients[i].getHistory().getHead();
+            while (curr) {
+                outFile << curr->visit->getType() << "," << curr->visit->getDate() << ","
+                        << curr->visit->getDoctorName() << "," << curr->visit->getDiagnosis() << "\n";
+                curr = curr->next;
+            }
+        }
+
+        outFile << dCount << "\n";
+        for (int i = 0; i < dCount; i++) {
+            outFile << doctors[i].getId() << "," << doctors[i].getName() << ","
+                    << doctors[i].getSpecialization() << "," << doctors[i].getFee() << "\n";
+        }
+
+        outFile.close();
+    }
+
+    static void loadData(Patient patients[], int& pCount, Doctor doctors[], int& dCount) {
+        ifstream inFile("clinic_data.txt");
+        if (!inFile) return;
+
+        string line;
+        if (!getline(inFile, line)) return;
+        pCount = stoi(line);
+
+        for (int i = 0; i < pCount; i++) {
+            getline(inFile, line);
+            stringstream ss(line);
+            string idStr, name, ageStr, phone;
+            getline(ss, idStr, ',');
+            getline(ss, name, ',');
+            getline(ss, ageStr, ',');
+            getline(ss, phone, ',');
+
+            patients[i] = Patient(stoi(idStr), name, stoi(ageStr), phone);
+
+            getline(inFile, line);
+            int vCount = stoi(line);
+            for (int j = 0; j < vCount; j++) {
+                getline(inFile, line);
+                stringstream vss(line);
+                string type, date, docName, diag;
+                getline(vss, type, ',');
+                getline(vss, date, ',');
+                getline(vss, docName, ',');
+                getline(vss, diag, ',');
+
+                if (type == "EMERGENCY") {
+                    patients[i].getHistory().addVisit(new EmergencyVisit(date, docName, diag));
+                } else {
+                    patients[i].getHistory().addVisit(new NormalVisit(date, docName, diag));
+                }
+            }
+        }
+
+        if (!getline(inFile, line)) return;
+        dCount = stoi(line);
+
+        for (int i = 0; i < dCount; i++) {
+            getline(inFile, line);
+            stringstream ss(line);
+            string idStr, name, spec, feeStr;
+            getline(ss, idStr, ',');
+            getline(ss, name, ',');
+            getline(ss, spec, ',');
+            getline(ss, feeStr, ',');
+
+            doctors[i] = Doctor(stoi(idStr), name, spec, stod(feeStr));
+        }
+
+        inFile.close();
+    }
+};
+
+class ClinicSystem {
+private:
+    Patient patients[100];
+    int patientCount;
+
+    Doctor doctors[100];
+    int doctorCount;
+
+    WaitingRoom waitingRoom;
+
+    void sortPatientsByID() {
+        for (int i = 0; i < patientCount - 1; i++) {
+            for (int j = 0; j < patientCount - i - 1; j++) {
+                if (patients[j].getId() > patients[j + 1].getId()) {
+                    swap(patients[j], patients[j + 1]);
+                }
+            }
+        }
+    }
+
+public:
+    ClinicSystem() : patientCount(0), doctorCount(0) {
+        DatabaseManager::loadData(patients, patientCount, doctors, doctorCount);
+        if (patientCount == 0 && doctorCount == 0) {
+            patients[patientCount++] = Patient(101, "Ahmed Hassan", 34, "01005558888");
+            patients[patientCount++] = Patient(103, "Nour Ibrahim", 19, "01122223333");
+            patients[patientCount++] = Patient(105, "Mariam Adel", 27, "01001234567");
+
+            doctors[doctorCount++] = Doctor(1, "Omar Adel", "Cardiology", 400);
+            doctors[doctorCount++] = Doctor(2, "Salma Fouad", "General", 250);
+        }
+        sortPatientsByID();
+    }
+
+    ~ClinicSystem() {
+        DatabaseManager::saveData(patients, patientCount, doctors, doctorCount);
+    }
+
+    int searchPatientByID(int id, int& comparisons) {
+        int low = 0, high = patientCount - 1;
+        comparisons = 0;
+        while (low <= high) {
+            comparisons++;
+            int mid = low + (high - low) / 2;
+            if (patients[mid].getId() == id) return mid;
+            if (patients[mid].getId() < id) low = mid + 1;
+            else high = mid - 1;
+        }
+        return -1;
+    }
+
+    void addPatient() {
+        int id, age;
+        string name, phone;
+        cout << "ID   : "; cin >> id;
+        cin.ignore();
+        cout << "Name : "; getline(cin, name);
+        cout << "Age  : "; cin >> age;
+        cout << "Phone: "; cin >> phone;
+
+        patients[patientCount++] = Patient(id, name, age, phone);
+        sortPatientsByID();
+        cout << "[OK] Patient " << id << " added.\n";
+    }
+
+    void viewAllPatients() const {
+        cout << "ID\tNAME\t\tAGE\tPHONE\n";
+        for (int i = 0; i < patientCount; i++) {
+            patients[i].displayInfo();
+        }
+        cout << patientCount << " patients.\n";
+    }
+
+    void searchPatient() {
+        int id;
+        cout << "Patient ID: "; cin >> id;
+        int comps = 0;
+        int idx = searchPatientByID(id, comps);
+        if (idx != -1) {
+            cout << "Found in " << comps << " comparisons [binary search]\n";
+            cout << "ID   : " << patients[idx].getId() << "\n";
+            cout << "Name : " << patients[idx].getName() << "\n";
+            cout << "Age  : " << patients[idx].getAge() << "\n";
+            cout << "Phone: " << patients[idx].getPhone() << "\n";
+            cout << "Visits: " << patients[idx].getHistory().getVisitCount() << "\n";
+        } else {
+            cout << "[X] No patient with ID " << id << ".\n";
+        }
+    }
+
+    void deletePatient() {
+        int id;
+        cout << "Patient ID: "; cin >> id;
+        int comps = 0;
+        int idx = searchPatientByID(id, comps);
+        if (idx != -1) {
+            for (int i = idx; i < patientCount - 1; i++) {
+                patients[i] = patients[i + 1];
+            }
+            patientCount--;
+            cout << "[OK] Patient " << id << " deleted.\n";
+        } else {
+            cout << "[X] No patient with ID " << id << ".\n";
+        }
+    }
+
+    void viewPatientHistory() {
+        int id;
+        cout << "Patient ID: "; cin >> id;
+        int comps = 0;
+        int idx = searchPatientByID(id, comps);
+        if (idx != -1) {
+            cout << "VISIT HISTORY " << patients[idx].getName() << "\n[linked list]\n";
+            patients[idx].getHistory().printHistory();
+            cout << "Total paid: " << patients[idx].getHistory().getTotalPaid() << " EGP\n[recursive sum]\n";
+        } else {
+            cout << "[X] No patient with ID " << id << ".\n";
+        }
+    }
+
+    void sortPatients() {
+        int choice;
+        cout << "Sort by (1) name (2) age: "; cin >> choice;
+
+        Patient tempArray[100];
+        for (int i = 0; i < patientCount; i++) tempArray[i] = patients[i];
+
+        int comparisons = 0;
+        for (int i = 0; i < patientCount - 1; i++) {
+            int minIdx = i;
+            for (int j = i + 1; j < patientCount; j++) {
+                comparisons++;
+                if (choice == 1) {
+                    if (tempArray[j].getName() < tempArray[minIdx].getName()) minIdx = j;
+                } else {
+                    if (tempArray[j].getAge() < tempArray[minIdx].getAge()) minIdx = j;
+                }
+            }
+            swap(tempArray[i], tempArray[minIdx]);
+        }
+
+        cout << "ID\t| NAME\t\t| AGE\n";
+        for (int i = 0; i < patientCount; i++) {
+            cout << tempArray[i].getId() << "\t| " << tempArray[i].getName() << "\t| " << tempArray[i].getAge() << "\n";
+        }
+        cout << "Sorted in " << comparisons << " comparisons [selection sort]\n";
+    }
+
+    void handleWaitingRoom() {
+        while (true) {
+            cout << "\nWAITING ROOM\n";
+            cout << "1. Add to waiting room\n";
+            cout << "2. View who is waiting\n";
+            cout << "3. Call next patient\n";
+            cout << "0. Back\n";
+            cout << "Choose: ";
+            int choice; cin >> choice;
+
+            if (choice == 0) break;
+            if (choice == 1) {
+                int id, typeChoice, severity = 1;
+                string timeStr;
+                cout << "Patient ID: "; cin >> id;
+                int comps = 0;
+                int idx = searchPatientByID(id, comps);
+                if (idx == -1) {
+                    cout << "[X] Patient not found.\n";
+                    continue;
+                }
+                cout << "Case type : (1) Emergency (2) Normal: "; cin >> typeChoice;
+                if (typeChoice == 1) {
+                    cout << "Enter Emergency Severity (1-5, 5 highest): ";
+                    cin >> severity;
+                }
+                cout << "Time arrived (e.g. 1:05 PM): ";
+                cin.ignore();
+                getline(cin, timeStr);
+
+                CaseType cType = (typeChoice == 1) ? EMERGENCY : NORMAL;
+                waitingRoom.addPatient(&patients[idx], cType, timeStr, severity);
+            }
+            else if (choice == 2) {
+                waitingRoom.viewWaiting();
+            }
+            else if (choice == 3) {
+                PatientInQueue nextP = waitingRoom.callNext();
+                if (nextP.patient == nullptr) {
+                    cout << "[X] No patients waiting.\n";
+                } else {
+                    string typeStr = (nextP.caseType == EMERGENCY) ? "EMERGENCY" : "NORMAL";
+                    cout << "\n>>> NOW CALLING: " << nextP.patient->getName() << " (" << typeStr << ")\n";
+
+                    cout << "Doctor Name: ";
+                    string docName, diagnosis, dateStr;
+                    cin.ignore();
+                    getline(cin, docName);
+                    cout << "Diagnosis  : ";
+                    getline(cin, diagnosis);
+                    cout << "Date (YYYY-MM-DD): ";
+                    getline(cin, dateStr);
+
+                    Visit* v = nullptr;
+                    if (nextP.caseType == EMERGENCY) {
+                        v = new EmergencyVisit(dateStr, docName, diagnosis, nextP.severityLevel);
+                        cout << "Fee: " << v->calculateFee() << " EGP [EmergencyVisit::calculateFee]\n";
+                    } else {
+                        v = new NormalVisit(dateStr, docName, diagnosis);
+                        cout << "Fee: " << v->calculateFee() << " EGP [NormalVisit::calculateFee]\n";
+                    }
+
+                    nextP.patient->getHistory().addVisit(v);
+                    cout << "[OK] Visit added to history. " << waitingRoom.getWaitingCount() << " patient(s) still waiting.\n";
+                }
+            }
+        }
+    }
+
+    void viewDoctors() const {
+        cout << "ID\tNAME\t\tSPECIALIZATION\tFEE\n";
+        for (int i = 0; i < doctorCount; i++) {
+            doctors[i].displayInfo();
+        }
+    }
+
+    void run() {
+        while (true) {
+            cout << "\n================================\n";
+            cout << "CLINIC MANAGEMENT SYSTEM\n";
+            cout << "================================\n";
+            cout << "1. Patients\n";
+            cout << "2. Doctors\n";
+            cout << "3. Waiting Room\n";
+            cout << "0. Exit\n";
+            cout << "Choose: ";
+            int choice; cin >> choice;
+
+            if (choice == 0) break;
+            if (choice == 1) {
+                while (true) {
+                    cout << "\nPATIENTS\n";
+                    cout << "1. Add patient\n";
+                    cout << "2. View all patients\n";
+                    cout << "3. Search by ID\n";
+                    cout << "4. Delete patient\n";
+                    cout << "5. View patient history\n";
+                    cout << "6. Sort patients\n";
+                    cout << "0. Back\n";
+                    cout << "Choose: ";
+                    int pChoice; cin >> pChoice;
+
+                    if (pChoice == 0) break;
+                    switch (pChoice) {
+                        case 1: addPatient(); break;
+                        case 2: viewAllPatients(); break;
+                        case 3: searchPatient(); break;
+                        case 4: deletePatient(); break;
+                        case 5: viewPatientHistory(); break;
+                        case 6: sortPatients(); break;
+                    }
+                }
+            }
+            else if (choice == 2) {
+                viewDoctors();
+            }
+            else if (choice == 3) {
+                handleWaitingRoom();
+            }
+        }
+    }
+};
+
+int main() {
+    ClinicSystem system;
+    system.run();
+    return 0;
+}
