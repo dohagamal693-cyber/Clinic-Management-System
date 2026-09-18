@@ -27,4 +27,7 @@ g++ src/*.cpp -I include -o clinic
 | Total Paid (Recursive) | Linked List | O(n) |
 
 ## Screenshots
-Program screenshots are included below.
+![Screenshot 1](docs/Screenshot1.png)
+![Screenshot 2](docs/Screenshot2.png)
+![Screenshot 3](docs/Screenshot3.png)
+![Screenshot 4](docs/Screenshot.Done.png)
